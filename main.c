@@ -37,7 +37,7 @@ void intlist_init(intlist* list) {
     //Initialize lock
     if(NULL == (list->lock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t))))
     {
-        printf("Error allocating in intlist_init(): %s", strerror(errno));
+        printf("Error allocating in malloc(): %s", strerror(errno));
         exit(-1);
     }
     error_code = pthread_mutexattr_init(&attr);
@@ -186,7 +186,6 @@ void intlist_remove_last_k(intlist* list, int k) {
         }
         list->size -= num_to_remove;
     }
-    pthread_mutex_unlock(list->lock);
 
     while(NULL != to_remove)
     {
@@ -194,6 +193,7 @@ void intlist_remove_last_k(intlist* list, int k) {
         to_remove = to_remove->next;
         free(temp);
     }
+    pthread_mutex_unlock(list->lock);
 }
 
 //NEED THREAD SAFE
@@ -210,13 +210,16 @@ pthread_mutex_t* intlist_get_mutex(intlist* list) {
 //Thread functions
 void* writer_function(void* nothing)
 {
+    pthread_mutex_t* list_lock = intlist_get_mutex(global_intlist);
     while(continue_running)
     {
+        pthread_mutex_lock(list_lock);
         intlist_push_head(global_intlist, rand());
         if(MAX < intlist_size(global_intlist))
         {
             pthread_cond_signal(too_many_elements_cond);
         }
+        pthread_mutex_unlock(list_lock);
     }
     pthread_exit(NULL);
 }
@@ -243,6 +246,7 @@ void* garbage_collector_function(void* nothing)
         pthread_mutex_lock(list_lock);
         pthread_cond_wait(too_many_elements_cond, list_lock); //waits until the list has more than MAX items
 
+        //printf("%d\n", intlist_size(global_intlist));
         if(MAX < intlist_size(global_intlist))
         {
             num_to_remove = (intlist_size(global_intlist)+1)/2;
@@ -271,11 +275,12 @@ int main(int argc, char** argv)
     srand((uint)time(NULL)); //Initialize random seed
 
     in_wnum = (uint)strtol(argv[1], NULL, BASE);
-    in_rnum = (uint)strtol(argv[1], NULL, BASE);
-    in_max = (uint)strtol(argv[1], NULL, BASE);
-    in_time = (uint)strtol(argv[1], NULL, BASE);
+    in_rnum = (uint)strtol(argv[2], NULL, BASE);
+    in_max = (uint)strtol(argv[3], NULL, BASE);
+    in_time = (uint)strtol(argv[4], NULL, BASE);
 
     MAX = in_max; //Initialize global variable MAX
+
 
     //Define and initialize a global double-linked list of integers.
     if(NULL == (global_intlist = (intlist*)malloc(sizeof(intlist))))
@@ -298,6 +303,7 @@ int main(int argc, char** argv)
         return -1;
     }
 
+    printf("Creating GC\n");
     //Create garbage collector thread
     error_code = pthread_create(&garbage_collector,  NULL, garbage_collector_function, NULL);
     if(error_code)
@@ -306,6 +312,7 @@ int main(int argc, char** argv)
         return -1;
     }
 
+    printf("Creating writers\n");
     //Create WNUM threads for the writers
     if(NULL == (writers = (pthread_t*)malloc(sizeof(pthread_t)*in_wnum)))
     {
@@ -321,6 +328,7 @@ int main(int argc, char** argv)
         }
     }
 
+    printf("Creating readers\n");
     //Create RNUM threads for the readers
     if(NULL == (readers = (pthread_t*)malloc(sizeof(pthread_t)*in_rnum)))
     {
@@ -336,22 +344,14 @@ int main(int argc, char** argv)
         }
     }
 
+    printf("Sleeping............\n");
     //Sleep TIME seconds
     sleep(in_time);
 
+    printf("Time to stop!!\n");
     //Stop all running threads (safely, avoid deadlocks)
     continue_running = 0;
-    pthread_cond_signal(too_many_elements_cond); //To wake up the GC
 
-    for (i = 0; i < in_wnum; ++i)
-    {
-        error_code = pthread_join(writers[i], NULL);
-        if(error_code)
-        {
-            printf("Error in pthread_join: %s\n", strerror(error_code));
-            return -1;
-        }
-    }
     for (i = 0; i < in_rnum; ++i)
     {
         error_code = pthread_join(readers[i], NULL);
@@ -361,6 +361,16 @@ int main(int argc, char** argv)
             return -1;
         }
     }
+    for (i = 0; i < in_wnum; ++i)
+    {
+        error_code = pthread_join(writers[i], NULL);
+        if(error_code)
+        {
+            printf("Error in pthread_join: %s\n", strerror(error_code));
+            return -1;
+        }
+    }
+    pthread_cond_signal(too_many_elements_cond); //To wake up the GC
     error_code = pthread_join(garbage_collector, NULL);
     if(error_code)
     {
@@ -382,6 +392,9 @@ int main(int argc, char** argv)
     free(writers);
     intlist_destroy(global_intlist);
     free(global_intlist);
+    pthread_cond_destroy(too_many_elements_cond);
     free(too_many_elements_cond);
     return 0;
 }
+
+//There is a deadlock if the readers want to read and there is nothing to read in the end

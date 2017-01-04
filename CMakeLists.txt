@@ -3,6 +3,8 @@ project(OS_ex3)
 
 set(CMAKE_C_STANDARD 99)
 
+link_libraries(-lpthread)
+
 set(SOURCE_FILES main.c)
 
 add_executable(runme ${SOURCE_FILES})

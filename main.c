@@ -3,14 +3,14 @@
 
 typedef struct intlist_element_t
 {
-    struct intlist_element_t next;
-    struct intlist_element_t prev;
+    struct intlist_element_t* next;
+    struct intlist_element_t* prev;
     int value;
 } intlist_element;
 
 typedef struct intlist_t {
-    intlist_element head;
-    intlist_element tail;
+    intlist_element* head;
+    intlist_element* tail;
     int size;
     pthread_mutex_t lock;
 }intlist;

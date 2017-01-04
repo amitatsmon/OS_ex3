@@ -125,6 +125,7 @@ void intlist_push_head(intlist* list, int value)
 int intlist_pop_tail(intlist* list)
 {
     intlist_element* temp;
+    int poped_value;
 
     pthread_mutex_lock(list->lock);
     while (0 == list->size)
@@ -132,6 +133,7 @@ int intlist_pop_tail(intlist* list)
         pthread_cond_wait(list->empty_list_cond, list->lock); //block if the list is empty
     }
     temp = list->tail;
+    poped_value = temp->value;
     if(NULL == list->tail->prev)
     {
         list->tail = NULL;
@@ -142,19 +144,63 @@ int intlist_pop_tail(intlist* list)
         list->tail = list->tail->prev;
     }
     --list->size;
-    pthread_mutex_unlock(list->lock);
     free(temp);
+    pthread_mutex_unlock(list->lock);
+    return poped_value;
 }
 
 //NEED THREAD SAFE
 //if k is larger than the list size, it removes whatever items are in the list and finishes.
-void intlist_remove_last_k(intlist* list, int k);
+void intlist_remove_last_k(intlist* list, int k)
+{
+    int num_to_remove, i;
+    intlist_element* temp, *to_remove = NULL;
+
+    pthread_mutex_lock(list->lock);
+    num_to_remove = (list->size < k)? list->size : k; //num_to_remove is the minimum of the size of the list and k;
+    if (0 < num_to_remove)
+    {
+        if (num_to_remove < list->size)
+        {
+            temp = list->tail;
+            for(i=0; i<num_to_remove; ++i)
+            {
+                temp = temp->prev;
+            }
+            temp->next->prev = NULL;
+            to_remove = temp->next;
+            temp->next = NULL;
+            list->tail = temp;
+        }
+        else //Means list-size == num_to_remove
+        {
+            to_remove = list->head;
+            list->head = NULL;
+            list->tail = NULL;
+        }
+        list->size -= num_to_remove;
+    }
+    pthread_mutex_unlock(list->lock);
+
+    while(NULL != to_remove)
+    {
+        temp = to_remove;
+        to_remove = to_remove->next;
+        free(temp);
+    }
+}
 
 //NEED THREAD SAFE
-int intlist_size(intlist* list);
+int intlist_size(intlist* list)
+{
+    return list->size;
+}
 
 //NEED THREAD SAFE
-pthread_mutex_t* intlist_get_mutex(intlist* list);
+pthread_mutex_t* intlist_get_mutex(intlist* list)
+{
+    return list->lock;
+}
 
 int main()
 {

@@ -22,7 +22,7 @@ typedef struct intlist_t {
 
 //Globals
 intlist* global_intlist;
-int MAX, continue_running  = 1;
+int MAX, continue_running  = 0;
 pthread_cond_t* too_many_elements_cond;
 
 //no need for thread safe
@@ -239,13 +239,13 @@ void* writer_function(void* nothing)
 {
     int error_code;
     pthread_mutex_t* list_lock = intlist_get_mutex(global_intlist);
-    while(continue_running)
+    while(continue_running < 2)
     {
-        if (0 != (error_code = pthread_mutex_lock(list_lock)))
-        {
-            printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
-            exit(-1);
-        }
+//        if (0 != (error_code = pthread_mutex_lock(list_lock)))
+//        {
+//            printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
+//            exit(-1);
+//        }
 
         intlist_push_head(global_intlist, rand());
         if(MAX < intlist_size(global_intlist))
@@ -253,11 +253,11 @@ void* writer_function(void* nothing)
             pthread_cond_signal(too_many_elements_cond);
         }
 
-        if (0 != (error_code = pthread_mutex_unlock(list_lock)))
-        {
-            printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
-            exit(-1);
-        }
+//        if (0 != (error_code = pthread_mutex_unlock(list_lock)))
+//        {
+//            printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
+//            exit(-1);
+//        }
     }
     pthread_exit(NULL);
 }
@@ -266,13 +266,13 @@ void* reader_function(void* nothing)
 {
     pthread_mutex_t* list_lock = intlist_get_mutex(global_intlist);
     int error_code;
-    while(continue_running)
+    while(0 == continue_running)
     {
-        if (0 != (error_code = pthread_mutex_lock(list_lock)))
-        {
-            printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
-            exit(-1);
-        }
+//        if (0 != (error_code = pthread_mutex_lock(list_lock)))
+//        {
+//            printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
+//            exit(-1);
+//        }
 
         intlist_pop_tail(global_intlist);
         if(MAX < intlist_size(global_intlist))
@@ -280,11 +280,11 @@ void* reader_function(void* nothing)
             pthread_cond_signal(too_many_elements_cond);
         }
 
-        if (0 != (error_code = pthread_mutex_unlock(list_lock)))
-        {
-            printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
-            exit(-1);
-        }
+//        if (0 != (error_code = pthread_mutex_unlock(list_lock)))
+//        {
+//            printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
+//            exit(-1);
+//        }
     }
     pthread_exit(NULL);
 }
@@ -298,7 +298,7 @@ void* garbage_collector_function(void* nothing)
         printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
         exit(-1);
     }
-    while(continue_running)
+    while(continue_running < 2)
     {
 
         pthread_cond_wait(too_many_elements_cond, list_lock); //waits until the list has more than MAX items
@@ -453,7 +453,7 @@ int main(int argc, char** argv)
 
     printf("Time to stop!!\n");
     //Stop all running threads (safely, avoid deadlocks)
-    continue_running = 0;
+    continue_running = 1;
 
     for (i = 0; i < in_rnum; ++i)
     {
@@ -464,6 +464,7 @@ int main(int argc, char** argv)
             return -1;
         }
     }
+    continue_running = 2;
     for (i = 0; i < in_wnum; ++i)
     {
         error_code = pthread_join(writers[i], NULL);

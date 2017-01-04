@@ -1,9 +1,9 @@
 *.o
+.idea
 
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
-.idea
 
 # Folder config file
 Desktop.ini

@@ -18,14 +18,13 @@ typedef struct intlist_t {
     intlist_element* tail;
     pthread_mutex_t* lock;
     pthread_cond_t* empty_list_cond;
-}intlist;
+} intlist;
 
 //Globals
 intlist* global_intlist;
-int MAX, continue_running  = 0;
+int MAX, continue_running  = 0; //0 - All thread run, 1 - only writers and GC run, 2 - Every thread should stop
 pthread_cond_t* too_many_elements_cond;
 
-//no need for thread safe
 void intlist_init(intlist* list) {
     int error_code;
     pthread_mutexattr_t attr;
@@ -35,7 +34,7 @@ void intlist_init(intlist* list) {
     list->tail = NULL;
 
     //Initialize lock
-    if(NULL == (list->lock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t))))
+    if (NULL == (list->lock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t))))
     {
         printf("Error allocating in malloc(): %s", strerror(errno));
         exit(-1);
@@ -60,7 +59,7 @@ void intlist_init(intlist* list) {
     }
 
     //Initialize empty_list_cond
-    if(NULL == (list->empty_list_cond = (pthread_cond_t*)malloc(sizeof(pthread_cond_t))))
+    if (NULL == (list->empty_list_cond = (pthread_cond_t*)malloc(sizeof(pthread_cond_t))))
     {
         printf("Error allocating in intlist_init(): %s", strerror(errno));
         exit(-1);
@@ -73,7 +72,6 @@ void intlist_init(intlist* list) {
     }
 }
 
-//no need for thread safe
 void intlist_destroy(intlist* list) {
     intlist_element *temp1, *temp2;
 
@@ -84,7 +82,7 @@ void intlist_destroy(intlist* list) {
     list->size = 0;
 
     temp1 = list->head;
-    while(NULL != temp1)
+    while (NULL != temp1)
     {
         temp2 = temp1;
         temp1 = temp2->next;
@@ -92,13 +90,12 @@ void intlist_destroy(intlist* list) {
     }
 }
 
-//NEED THREAD SAFE
 void intlist_push_head(intlist* list, int value) {
     intlist_element* temp;
     int error_code;
 
-    //Creating a list element containing the given value;
-    if(NULL == (temp = (intlist_element*)malloc(sizeof(intlist_element))))
+    //Creating a list element containing the given value
+    if (NULL == (temp = (intlist_element*)malloc(sizeof(intlist_element))))
     {
         printf("Error allocating memory to add a new elemet to the list: %s\n", strerror(errno));
         exit(-1);
@@ -113,7 +110,7 @@ void intlist_push_head(intlist* list, int value) {
         exit(-1);
     }
 
-    if(NULL == list->head)
+    if (NULL == list->head)
     {
         list->head = temp;
         list->tail = temp;
@@ -124,7 +121,7 @@ void intlist_push_head(intlist* list, int value) {
         temp->next = list->head;
         list->head = temp;
     }
-    list->size = list->size+1;
+    list->size = list->size + 1;
     pthread_cond_signal(list->empty_list_cond);
     if (0 != (error_code = pthread_mutex_unlock(list->lock)))
     {
@@ -133,7 +130,6 @@ void intlist_push_head(intlist* list, int value) {
     }
 }
 
-//NEED THREAD SAFE
 //blocking, if the list is empty - wait until an item is available and then pop it.
 int intlist_pop_tail(intlist* list) {
     intlist_element* temp;
@@ -150,7 +146,7 @@ int intlist_pop_tail(intlist* list) {
     }
     temp = list->tail;
     poped_value = temp->value;
-    if(NULL == list->tail->prev)
+    if (NULL == list->tail->prev)
     {
         list->tail = NULL;
         list->head = NULL;
@@ -161,22 +157,21 @@ int intlist_pop_tail(intlist* list) {
         list->tail->next = NULL;
     }
     --list->size;
-    free(temp);
     if (0 != (error_code = pthread_mutex_unlock(list->lock)))
     {
         printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
         exit(-1);
     }
+    free(temp);
     return poped_value;
 }
 
-//NEED THREAD SAFE
 //if k is larger than the list size, it removes whatever items are in the list and finishes.
 void intlist_remove_last_k(intlist* list, int k) {
     int num_to_remove, i, error_code;
     intlist_element* temp, *to_remove = NULL;
 
-    if(k<0)
+    if (k < 0)
     {
         exit(-1);
     }
@@ -186,13 +181,13 @@ void intlist_remove_last_k(intlist* list, int k) {
         printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
         exit(-1);
     }
-    num_to_remove = (list->size < k)? list->size : k; //num_to_remove is the minimum of the size of the list and k;
+    num_to_remove = (list->size < k) ? list->size : k; //num_to_remove is the minimum of the size of the list and k;
     if (0 < num_to_remove)
     {
         if (num_to_remove < list->size)
         {
             temp = list->tail;
-            for(i=0; i<num_to_remove; ++i)
+            for (i = 0; i < num_to_remove; ++i)
             {
                 temp = temp->prev;
             }
@@ -210,54 +205,56 @@ void intlist_remove_last_k(intlist* list, int k) {
         list->size -= num_to_remove;
     }
 
-    while(NULL != to_remove)
-    {
-        temp = to_remove;
-        to_remove = to_remove->next;
-        free(temp);
-    }
     if (0 != (error_code = pthread_mutex_unlock(list->lock)))
     {
         printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
         exit(-1);
     }
+
+    while (NULL != to_remove)
+    {
+        temp = to_remove;
+        to_remove = to_remove->next;
+        free(temp);
+    }
 }
 
-//NEED THREAD SAFE
-int intlist_size(intlist* list) {
+int intlist_size(intlist* list)
+{
     return list->size;
 }
 
-//NEED THREAD SAFE
-pthread_mutex_t* intlist_get_mutex(intlist* list) {
+pthread_mutex_t* intlist_get_mutex(intlist* list)
+{
     return list->lock;
 }
 
 
-//Thread functions
 void* writer_function(void* nothing)
 {
     int error_code;
     pthread_mutex_t* list_lock = intlist_get_mutex(global_intlist);
-    while(continue_running < 2)
+    while (continue_running < 2)
     {
-//        if (0 != (error_code = pthread_mutex_lock(list_lock)))
-//        {
-//            printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
-//            exit(-1);
-//        }
-
         intlist_push_head(global_intlist, rand());
-        if(MAX < intlist_size(global_intlist))
+        if (MAX < intlist_size(global_intlist))
         {
-            pthread_cond_signal(too_many_elements_cond);
+            if (0 != (error_code = pthread_mutex_lock(list_lock)))
+            {
+                printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
+                exit(-1);
+            }
+            if (0 != (error_code = pthread_cond_signal(too_many_elements_cond)))
+            {
+                printf("Error in pthread_cond_signal(): %s\n", strerror(error_code));
+                exit(-1);
+            }
+            if (0 != (error_code = pthread_mutex_unlock(list_lock)))
+            {
+                printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
+                exit(-1);
+            }
         }
-
-//        if (0 != (error_code = pthread_mutex_unlock(list_lock)))
-//        {
-//            printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
-//            exit(-1);
-//        }
     }
     pthread_exit(NULL);
 }
@@ -266,25 +263,27 @@ void* reader_function(void* nothing)
 {
     pthread_mutex_t* list_lock = intlist_get_mutex(global_intlist);
     int error_code;
-    while(0 == continue_running)
+    while (0 == continue_running)
     {
-//        if (0 != (error_code = pthread_mutex_lock(list_lock)))
-//        {
-//            printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
-//            exit(-1);
-//        }
-
         intlist_pop_tail(global_intlist);
-        if(MAX < intlist_size(global_intlist))
+        if (MAX < intlist_size(global_intlist))
         {
-            pthread_cond_signal(too_many_elements_cond);
+            if (0 != (error_code = pthread_mutex_lock(list_lock)))
+            {
+                printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
+                exit(-1);
+            }
+            if (0 != (error_code = pthread_cond_signal(too_many_elements_cond)))
+            {
+                printf("Error in pthread_cond_signal(): %s\n", strerror(error_code));
+                exit(-1);
+            }
+            if (0 != (error_code = pthread_mutex_unlock(list_lock)))
+            {
+                printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
+                exit(-1);
+            }
         }
-
-//        if (0 != (error_code = pthread_mutex_unlock(list_lock)))
-//        {
-//            printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
-//            exit(-1);
-//        }
     }
     pthread_exit(NULL);
 }
@@ -298,14 +297,14 @@ void* garbage_collector_function(void* nothing)
         printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
         exit(-1);
     }
-    while(continue_running < 2)
+    while (continue_running < 2)
     {
 
         pthread_cond_wait(too_many_elements_cond, list_lock); //waits until the list has more than MAX items
 
-        while(MAX < intlist_size(global_intlist))
+        while (MAX < intlist_size(global_intlist))
         {
-            num_to_remove = (intlist_size(global_intlist)+1)/2;
+            num_to_remove = (intlist_size(global_intlist) + 1) / 2;
             intlist_remove_last_k(global_intlist, num_to_remove);
 
             printf("GC - %d items removed from the list\n", num_to_remove);
@@ -319,53 +318,11 @@ void* garbage_collector_function(void* nothing)
     pthread_exit(NULL);
 }
 
-void print_list(intlist* list)
-{
-    int end_size,i;
-    intlist_element* temp;
-    end_size = intlist_size(list);
-    printf("size is: %d\n", end_size);
-    printf("head is: %d\n", list->head->value);
-    temp = list->head;
-    for (i = 0; i < end_size; ++i)
-    {
-        printf("%d ", temp->value);
-        temp = temp->next;
-    }
-    printf("\n");
-}
-
 int main(int argc, char** argv)
 {
     uint in_wnum, in_rnum, in_max, in_time;
     int error_code, i, end_size;
     pthread_t *writers, *readers, garbage_collector;
-
-//    if(NULL == (global_intlist = (intlist*)malloc(sizeof(intlist))))
-//    {
-//        printf("Error in malloc(): %s\n", strerror(errno));
-//        return -1;
-//    }
-//    intlist_init(global_intlist);
-//
-//    intlist_push_head(global_intlist, 1);
-//    intlist_push_head(global_intlist, 2);
-//    intlist_push_head(global_intlist, 3);
-//    intlist_push_head(global_intlist, 4);
-//    intlist_push_head(global_intlist, 5);
-//    intlist_pop_tail(global_intlist);
-//    intlist_push_head(global_intlist, 6);
-//    intlist_push_head(global_intlist, 7);
-//    intlist_pop_tail(global_intlist);
-//    print_list(global_intlist);
-//    intlist_remove_last_k(global_intlist, 9);
-//    intlist_push_head(global_intlist, 1);
-//
-//    print_list(global_intlist);
-//    intlist_destroy(global_intlist);
-//    free(global_intlist);
-//    return 0;
-
 
     if (5 != argc)
     {
@@ -380,11 +337,16 @@ int main(int argc, char** argv)
     in_max = (uint)strtol(argv[3], NULL, BASE);
     in_time = (uint)strtol(argv[4], NULL, BASE);
 
+    if (in_wnum <= 0 || in_rnum <= 0 || in_max <= 0 || in_time <= 0)
+    {
+        printf("Error, input numbers should all be positive integers!\n");
+        return 1;
+    }
+
     MAX = in_max; //Initialize global variable MAX
 
-
     //Define and initialize a global double-linked list of integers
-    if(NULL == (global_intlist = (intlist*)malloc(sizeof(intlist))))
+    if (NULL == (global_intlist = (intlist*)malloc(sizeof(intlist))))
     {
         printf("Error in malloc(): %s\n", strerror(errno));
         return -1;
@@ -392,7 +354,7 @@ int main(int argc, char** argv)
     intlist_init(global_intlist);
 
     //Create a condition variable for the garbage collector
-    if(NULL == (too_many_elements_cond = (pthread_cond_t*)malloc(sizeof(pthread_cond_t))))
+    if (NULL == (too_many_elements_cond = (pthread_cond_t*)malloc(sizeof(pthread_cond_t))))
     {
         printf("Error in malloc(): %s\n", strerror(errno));
         return -1;
@@ -404,18 +366,16 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    printf("Creating GC\n");
     //Create garbage collector thread
     error_code = pthread_create(&garbage_collector,  NULL, garbage_collector_function, NULL);
-    if(error_code)
+    if (error_code)
     {
         printf("Error in pthread_create(): %s\n", strerror(error_code));
         return -1;
     }
 
-    printf("Creating writers\n");
     //Create WNUM threads for the writers
-    if(NULL == (writers = (pthread_t*)malloc(sizeof(pthread_t)*in_wnum)))
+    if (NULL == (writers = (pthread_t*)malloc(sizeof(pthread_t) * in_wnum)))
     {
         printf("Error in malloc(): %s\n", strerror(errno));
         return -1;
@@ -423,16 +383,15 @@ int main(int argc, char** argv)
     for (i = 0; i < in_wnum; ++i)
     {
         error_code = pthread_create(&writers[i], NULL, writer_function, NULL);
-        if(error_code)
+        if (error_code)
         {
             printf("Error in pthread_create(): %s\n", strerror(error_code));
             return -1;
         }
     }
 
-    printf("Creating readers\n");
     //Create RNUM threads for the readers
-    if(NULL == (readers = (pthread_t*)malloc(sizeof(pthread_t)*in_rnum)))
+    if (NULL == (readers = (pthread_t*)malloc(sizeof(pthread_t) * in_rnum)))
     {
         printf("Error in malloc(): %s\n", strerror(errno));
         return -1;
@@ -440,56 +399,78 @@ int main(int argc, char** argv)
     for (i = 0; i < in_rnum; ++i)
     {
         error_code = pthread_create(&readers[i], NULL, reader_function, NULL);
-        if(error_code)
+        if (error_code)
         {
             printf("Error in pthread_create(): %s\n", strerror(error_code));
             return -1;
         }
     }
 
-    printf("Sleeping............\n");
     //Sleep TIME seconds
     sleep(in_time);
 
-    printf("Time to stop!!\n");
     //Stop all running threads (safely, avoid deadlocks)
-    continue_running = 1;
-
+    continue_running = 1; //1 tells the readers to stop, we kill the readers first to avoid deadlock
     for (i = 0; i < in_rnum; ++i)
     {
         error_code = pthread_join(readers[i], NULL);
-        if(error_code)
+        if (error_code)
         {
             printf("Error in pthread_join: %s\n", strerror(error_code));
             return -1;
         }
     }
-    continue_running = 2;
+
+    continue_running = 2; //2 tells the writers and the garbage collector to stop
     for (i = 0; i < in_wnum; ++i)
     {
         error_code = pthread_join(writers[i], NULL);
-        if(error_code)
+        if (error_code)
         {
             printf("Error in pthread_join: %s\n", strerror(error_code));
             return -1;
         }
     }
-    pthread_cond_signal(too_many_elements_cond); //To wake up the GC
-    error_code = pthread_join(garbage_collector, NULL);
-    if(error_code)
+
+    //To wake up the GC if he waits for a condition
+    if (0 != (error_code = pthread_mutex_lock(intlist_get_mutex(global_intlist))))
     {
-        printf("Error in pthread_join: %s\n", strerror(error_code));
+        printf("Error in pthread_mutex_lock(): %s\n", strerror(error_code));
+        return -1;
+    }
+    if (0 != (error_code = pthread_cond_signal(too_many_elements_cond)))
+    {
+        printf("Error in pthread_cond_signal(): %s\n", strerror(error_code));
+        return -1;
+    }
+    if (0 != (error_code = pthread_mutex_unlock(intlist_get_mutex(global_intlist))))
+    {
+        printf("Error in pthread_mutex_unlock(): %s\n", strerror(error_code));
+        return -1;
+    }
+    error_code = pthread_join(garbage_collector, NULL);
+    if (error_code)
+    {
+        printf("Error in pthread_join(): %s\n", strerror(error_code));
         return -1;
     }
 
-    // print the size of the list and all items inside
+    //Print the size of the list and all items inside
     end_size = intlist_size(global_intlist);
-    printf("size is: %d\n", end_size);
-//    for (i = 0; i < end_size; ++i)
-//    {
-//        printf("%d ", intlist_pop_tail(global_intlist));
-//    }
-//    printf("\n");
+    printf("The size of the list is: %d\n", end_size);
+    printf("[");
+    for (i = 0; i < end_size - 1; ++i)
+    {
+        printf("%d, ", intlist_pop_tail(global_intlist));
+    }
+    if (end_size >= 1)
+    {
+        printf("%d]\n", intlist_pop_tail(global_intlist));
+    }
+    else
+    {
+        printf("]\n");
+    }
 
     //Cleanup and exit
     free(readers);
@@ -500,5 +481,3 @@ int main(int argc, char** argv)
     free(too_many_elements_cond);
     return 0;
 }
-
-//There is a deadlock if the readers want to read and there is nothing to read in the end
